@@ -265,7 +265,7 @@ var cur = -1, first = 0, panel = $('#panel'), raf = 0, marks = {};
 var NEEDW = {}; WORDS.forEach(function (w) { NEEDW[w] = 0; }); Q.forEach(function (q) { q.w.forEach(function (w) { NEEDW[w]++; }); });
 function resetMarks() { marks = {}; WORDS.forEach(function (w) { marks[w] = []; }); }
 function drawWall() {
-  var now = cur < Q.length && cur >= 0 ? Q[cur].w : [];
+  var now = cur < Q.length && cur >= 0 && Q[cur].done ? Q[cur].w : [];   /* light the word only AFTER the answer, never before */
   $('#tiles').innerHTML = WORDS.map(function (w) {
     var m = marks[w], g = m.filter(function (x) { return x === 'g'; }).length, pips = '';
     for (var i = 0; i < NEEDW[w]; i++) pips += '<i class="' + (m[i] || '') + '"></i>';
