@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Feedback Words</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Same layout as Selection Sentences: bar on top, word wall in the top part, question panel below that swipes left when done. */
+:root {
+  --bg: #E9EEEA; --surface: #FFFFFF; --ink: #18211D; --muted: #56625B; --line: #B4C0B7; --grid: #DDE4DE;
+  --accent: #1E5A86; --accent-ink: #FFFFFF; --accent-soft: #D7E5F0;
+  --good: #2A7448; --good-soft: #D8ECDF; --bad: #AF2B1F; --bad-soft: #F6DBD7; --hot: #C8501A;
+  --font: "Atkinson Hyperlegible", Verdana, "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.35 var(--font); overflow: hidden; overscroll-behavior: none;
+  padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
+button { font: inherit; color: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; border-radius: 0; }
+button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--hot); outline-offset: 2px; }
+#app { height: 100%; max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, .62fr) minmax(0, 1.38fr); gap: 6px; }
+#app.tall { grid-template-rows: auto minmax(0, .42fr) minmax(0, 1.58fr); }
+
+#bar { display: flex; align-items: center; gap: 10px; min-height: 34px; }
+#bar h1 { margin: 0; font-size: clamp(16px, 4.4vw, 20px); white-space: nowrap; }
+.prog { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pbar { flex: 1; height: 10px; background: var(--surface); border: 1px solid var(--line); min-width: 30px; }
+.pbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+.count { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 14px; }
+.btn { border: 2px solid var(--line); background: var(--surface); padding: 6px 14px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.game { background: var(--hot); border-color: var(--hot); color: #fff; padding: 4px 10px; }
+.btn:disabled { opacity: .45; cursor: default; }
+@media (max-width: 520px) { .pbar { display: none; } .prog { justify-content: flex-end; } #score .lbl { display: none; } #score::before { content: "\2713  "; color: var(--good); } }
+
+/* word wall */
+#wall { background: var(--surface); border: 1px solid var(--line); min-height: 0; padding: 6px 8px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 4px; overflow: hidden; }
+#wall h2 { margin: 0; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+#tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 5px; min-height: 0; }
+.tile { border: 2px solid var(--line); background: var(--surface); padding: 2px 7px; display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 0; overflow: hidden; transition: background .3s, border-color .3s; }
+.tile b { font-size: clamp(12.5px, 3.3vw, 15px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.now { border-color: var(--hot); background: #FFF6D8; }
+.tile.mast { border-color: var(--good); background: var(--good-soft); }
+.pips { display: flex; gap: 3px; flex: none; }
+.pips i { width: 10px; height: 10px; border: 2px solid var(--line); display: block; }
+.pips i.g { background: var(--good); border-color: var(--good); }
+.pips i.r { background: var(--bad); border-color: var(--bad); }
+@media (max-width: 700px) { #tiles { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px; } .pips i { width: 8px; height: 8px; } #wall h2 { display: none; } #wall { grid-template-rows: minmax(0, 1fr); } }
+
+/* question deck */
+#deck { position: relative; overflow: hidden; min-height: 0; }
+.panel { position: absolute; inset: 0; background: var(--surface); border: 2px solid var(--ink); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 6px; padding: 8px 12px 10px;
+  transition: transform .45s cubic-bezier(.6, 0, .4, 1), opacity .45s; }
+.panel.out { transform: translateX(-115%); opacity: .3; }
+.panel.in { transform: translateX(115%); transition: none; }
+.qhead { display: grid; gap: 2px; }
+.qtag { font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--accent); }
+.qp { margin: 0; font-size: clamp(15px, 4.2vw, 19px); font-weight: 700; text-wrap: balance; }
+.qp .def { font-weight: 400; font-style: italic; }
+.body { min-height: 0; display: grid; align-content: safe center; gap: 8px; }
+.foot { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.fb { flex: 1; margin: 0; font-size: clamp(13px, 3.6vw, 15px); min-width: 0; }
+.fb.good b:first-child { color: var(--good); } .fb.bad b:first-child { color: var(--bad); }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+@media (prefers-reduced-motion: no-preference) { .pulse { animation: pulse 1.2s ease-in-out infinite; } }
+
+.opts { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.opts.idea { grid-template-columns: minmax(0, 1fr); }
+.opt { border: 2px solid var(--line); background: var(--surface); padding: 10px 8px; cursor: pointer; font-weight: 700; text-align: center; font-size: clamp(15px, 4.2vw, 18px); }
+.opts.idea .opt { font-weight: 400; text-align: left; font-size: clamp(13.5px, 3.7vw, 15.5px); padding: 7px 10px; }
+.opt.bad { background: var(--bad-soft); border-color: var(--bad); text-decoration: line-through; cursor: default; }
+.opt.good { background: var(--good-soft); border-color: var(--good); }
+.opt:not(:disabled):hover { border-color: var(--accent); }
+
+.sent { margin: 0; font-size: clamp(14.5px, 4vw, 17.5px); line-height: 2.05; }
+.lines { display: grid; gap: 0; }
+.lines .sent { line-height: 1.9; }
+.lines .sent .n { display: inline-block; width: 1.4em; font-weight: 700; color: var(--muted); }
+.slot { display: inline-block; min-width: 5.6em; padding: 0 6px; line-height: 1.5; text-align: center; border: 2px dashed var(--accent); background: var(--accent-soft); cursor: pointer; font-weight: 700; vertical-align: baseline; }
+.slot.act { border-style: solid; outline: 3px solid var(--hot); outline-offset: 1px; }
+.slot.full { border-style: solid; background: var(--surface); }
+.slot.ok { border: 2px solid var(--good); background: var(--good-soft); cursor: default; }
+.slot.over { background: var(--hot); color: #fff; }
+@keyframes shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+.shake { animation: shake .4s; border-color: var(--bad) !important; background: var(--bad-soft) !important; }
+.choices, .bank { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chip { border: 2px solid var(--ink); background: var(--surface); padding: 6px 14px; font-weight: 700; cursor: grab; touch-action: none; user-select: none; }
+.chip.sel { background: var(--hot); border-color: var(--hot); color: #fff; }
+.choices .chip { cursor: pointer; touch-action: manipulation; }
+.ghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(-50%, -60%) rotate(-3deg); box-shadow: 0 6px 16px rgba(0, 0, 0, .3); }
+@media (max-width: 700px) {
+  .lines .sent { font-size: 14px; line-height: 1.6; margin-bottom: 3px; }
+  .slot { min-width: 4.8em; line-height: 1.3; }
+  .bank { gap: 6px; } .bank .chip { padding: 4px 11px; }
+  .opts { gap: 6px; } .opt { padding: 8px 6px; }
+}
+
+.range { position: relative; height: 100%; min-height: 120px; overflow: hidden; background: repeating-linear-gradient(0deg, var(--surface) 0 38px, var(--grid) 38px 39px); border: 1px solid var(--line); cursor: crosshair; }
+.tgt { position: absolute; left: 0; top: 0; border: 2px solid var(--ink); background: #FFF6D8; padding: 5px 12px; font-weight: 700; font-size: clamp(14px, 4vw, 17px); cursor: crosshair; white-space: nowrap; will-change: transform; }
+.tgt.miss { background: var(--bad-soft); border-color: var(--bad); text-decoration: line-through; opacity: .55; pointer-events: none; }
+.tgt.hit { background: var(--good); border-color: var(--good); color: #fff; }
+.boom { position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; border: 3px solid var(--hot); border-radius: 50%; pointer-events: none; animation: boom .45s ease-out forwards; }
+@keyframes boom { from { transform: scale(.2); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+
+.endc { display: grid; gap: 10px; justify-items: center; text-align: center; align-content: center; }
+.endc h2 { margin: 0; font-size: clamp(20px, 6vw, 28px); }
+.endc p { margin: 0; }
+.endc .big { font-size: clamp(16px, 5vw, 22px); }
+
+/* reward game: Hold the Line */
+#hl { position: fixed; inset: 0; z-index: 30; background: #10180F; }
+#hc { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.hhud { position: absolute; top: calc(8px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); display: flex; justify-content: space-between; align-items: center; gap: 10px; pointer-events: none; flex-wrap: wrap; }
+.hhud span { background: rgba(255, 255, 255, .9); border: 2px solid var(--ink); padding: 4px 12px; font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums; }
+.hbtns { position: absolute; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 10px; }
+.hb { width: 120px; height: 66px; font: 700 20px var(--font); letter-spacing: .04em; border: 3px solid var(--ink); background: rgba(255, 255, 255, .88); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+#heat.on { background: #D9481F; color: #fff; } #cool.on { background: #2C79C4; color: #fff; }
+#hreset { position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); padding: 6px 12px; min-width: 84px; }
+#hreset.armed { background: var(--bad); border-color: var(--bad); color: #fff; white-space: normal; width: 84px; font-size: 13px; }
+.hhelp { position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); margin: 0; color: #fff; font-weight: 700; text-shadow: 0 1px 3px #000; text-align: center; font-size: 15px; width: min(52%, 460px); pointer-events: none; }
+@media (max-width: 640px) { .hb { width: 92px; height: 58px; font-size: 17px; } .hhelp { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px)); width: 90%; font-size: 13.5px; } .hhud span { font-size: 14px; } }
+#gj { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 22px; background: rgba(16, 24, 15, .92); text-align: center; padding: 20px; }
+#gj p { margin: 0; color: #F4F1E6; font-weight: 700; }
+#gj .w { font: 700 clamp(56px, 16vw, 150px)/1 var(--font); }
+#gj .s { font-size: clamp(17px, 4.6vw, 24px); }
+@keyframes wig { 0% { transform: rotate(-5deg) scale(1); } 25% { transform: rotate(5deg) scale(1.06); } 50% { transform: rotate(-3deg) scale(.97); } 75% { transform: rotate(4deg) scale(1.04); } 100% { transform: rotate(-5deg) scale(1); } }
+#gj .w { animation: wig .9s ease-in-out infinite; }
+#gj div { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+@media (prefers-reduced-motion: reduce) { #gj .w { animation-duration: 3s; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="bar">
+    <h1>Feedback Words</h1>
+    <div class="prog"><div class="pbar" aria-hidden="true"><i id="pfill"></i></div><span class="count" id="pcount"></span></div>
+    <span class="count" id="score"></span>
+    <button type="button" class="btn game" id="gameBtn" hidden>Hold the Line</button>
+  </header>
+  <section id="wall" aria-label="Word wall"><h2>Word wall: a green square for every word you get right on the first try</h2><div id="tiles"></div></section>
+  <section id="deck"><div class="panel" id="panel" aria-live="polite"></div></section>
+</div>
+
+<div id="hl" hidden>
+  <canvas id="hc" aria-label="Hold the Line: keep body temperature on the set point"></canvas>
+  <div class="hhud"><span id="htime">0:45</span><span id="hzone">On the line: 0%</span></div>
+  <div class="hbtns"><button type="button" class="hb" id="heat" aria-label="Heat">▲ HEAT</button><button type="button" class="hb" id="cool" aria-label="Cool">▼ COOL</button></div>
+  <button type="button" class="btn" id="hreset">Reset</button>
+  <p class="hhelp" id="hhelp">You are the control center. Hold HEAT or COOL (or the ▲ ▼ keys) to keep the temperature line on the dashed set point. Watch out for runaway positive feedback!</p>
+  <div id="gj" hidden><p class="w">good job.</p><p class="s" id="gjs"></p><div><button type="button" class="btn pri" id="gjAgain">Play again</button><button type="button" class="btn" id="gjBack">Start the review over</button></div></div>
+</div>
+
+<script>
+(function () {
+'use strict';
+var $ = function (s, r) { return (r || document).querySelector(s); };
+
+/* ---------- the words and their definitions (from the vocabulary sheet and the quiz) ---------- */
+var D = {
+  'Homeostasis': 'keeping internal conditions steady even when the outside environment changes',
+  'Feedback loop': 'a cycle in which a response changes the same condition that set it off',
+  'Stimulus': 'a change inside or outside an organism that is detected',
+  'Response': 'the action an organism takes because of a stimulus',
+  'Set point': 'the normal value or range that a system works to keep',
+  'Negative feedback': 'the response reverses the change and moves the system back toward its set point',
+  'Positive feedback': 'the response increases the change and moves the system away from its set point',
+  'Internal environment': 'the conditions inside an organism, such as temperature, water, and glucose',
+  'Regulation': 'controlling a factor so it stays within a normal range',
+  'Receptor': 'a sensor that detects a change in conditions',
+  'Control center': 'the part of the loop that compares information to the set point and sends instructions',
+  'Effector': 'a muscle, gland, or other structure that carries out the response',
+  'Hormone': 'a chemical messenger carried in the blood that changes how target cells work'
+};
+var WORDS = Object.keys(D);
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+function def(w) { return w + ': ' + D[w] + '.'; }
+function why(w) { return '<b>' + w + '</b> = ' + D[w] + '.'; }
+
+/* ---------- questions ---------- */
+/* t: pick | shoot | fill | drag. w: the word(s) the question drills (fills the word wall). */
+var Q = [
+  { t: 'pick', w: ['Receptor'], tag: 'Name the word', p: 'Which word means: <span class="def">' + D['Receptor'] + '</span>?',
+    o: ['Receptor', 'Effector', 'Stimulus', 'Control center'], a: 'Receptor', why: why('Receptor') },
+  { t: 'shoot', w: ['Set point'], tag: 'Shoot the word', p: 'Shoot the word that means: <span class="def">' + D['Set point'] + '</span>.',
+    targets: ['Set point', 'Stimulus', 'Response', 'Hormone'], a: 'Set point', why: why('Set point') },
+  { t: 'fill', w: ['Set point'], tag: 'Finish the definition', p: 'Choose the words to finish the definition.',
+    parts: ['A set point is the normal ', { o: ['value or range', 'change', 'response'], a: 'value or range' }, ' that a system works to ', { o: ['keep', 'detect', 'release'], a: 'keep' }, '.'],
+    why: why('Set point') },
+  { t: 'pick', kind: 'idea', w: ['Effector'], tag: 'Pick the definition', p: 'Which is the definition of <b>effector</b>?',
+    o: [cap(D['Effector']) + '.', cap(D['Receptor']) + '.', cap(D['Stimulus']) + '.', cap(D['Control center']) + '.'], a: cap(D['Effector']) + '.', why: why('Effector') },
+  { t: 'pick', w: ['Set point'], tag: 'Use the word', p: 'Body temperature should stay near 37 °C. What is 37 °C called?',
+    o: ['Set point', 'Stimulus', 'Response', 'Effector'], a: 'Set point', why: '37 °C is the normal value the body works to keep, so it is the <b>set point</b>.' },
+  { t: 'drag', w: ['Stimulus', 'Receptor', 'Control center', 'Effector', 'Response'], tag: 'Build the loop', p: 'Drag the words to build the feedback loop.',
+    lines: [['A change, called the ', { a: 'stimulus' }, ', happens.'], ['The ', { a: 'receptor' }, ' detects the change.'], ['The ', { a: 'control center' }, ' compares it to the set point and sends instructions.'], ['The ', { a: 'effector' }, ' carries out the ', { a: 'response' }, '.']],
+    bank: ['stimulus', 'receptor', 'control center', 'effector', 'response', 'hormone', 'homeostasis'],
+    why: 'Stimulus → receptor → control center → effector → response. That order is every feedback loop.' },
+  { t: 'shoot', w: ['Feedback loop'], tag: 'Shoot the word', p: 'Shoot the word that means: <span class="def">' + D['Feedback loop'] + '</span>.',
+    targets: ['Feedback loop', 'Homeostasis', 'Regulation', 'Response'], a: 'Feedback loop', why: why('Feedback loop') },
+  { t: 'fill', w: ['Negative feedback'], tag: 'Finish the definition', p: 'Choose the words to finish the definition.',
+    parts: ['In negative feedback, the response ', { o: ['reverses', 'increases'], a: 'reverses' }, ' the change and moves the system ', { o: ['back toward', 'away from'], a: 'back toward' }, ' its set point.'],
+    why: why('Negative feedback') },
+  { t: 'fill', w: ['Positive feedback'], tag: 'Finish the definition', p: 'Choose the words to finish the definition.',
+    parts: ['In positive feedback, the response ', { o: ['reverses', 'increases'], a: 'increases' }, ' the change and moves the system ', { o: ['back toward', 'away from'], a: 'away from' }, ' its set point.'],
+    why: why('Positive feedback') },
+  { t: 'pick', w: ['Effector'], tag: 'Use the word', p: 'You get cold and start to shiver. In this loop, your shivering muscles are the...',
+    o: ['Effector', 'Receptor', 'Stimulus', 'Set point'], a: 'Effector', why: 'The muscles carry out the response (shivering), so they are the <b>effector</b>.' },
+  { t: 'pick', kind: 'idea', w: ['Control center'], tag: 'Pick the definition', p: 'Which is the definition of <b>control center</b>?',
+    o: [cap(D['Control center']) + '.', cap(D['Receptor']) + '.', cap(D['Effector']) + '.', cap(D['Set point']) + '.'], a: cap(D['Control center']) + '.', why: why('Control center') },
+  { t: 'shoot', w: ['Homeostasis'], tag: 'Shoot the word', p: 'Shoot the word that means: <span class="def">' + D['Homeostasis'] + '</span>.',
+    targets: ['Homeostasis', 'Regulation', 'Set point', 'Feedback loop'], a: 'Homeostasis', why: why('Homeostasis') },
+  { t: 'pick', w: ['Control center'], tag: 'Use the word', p: 'The brain compares body temperature to 37 °C and sends signals to the sweat glands. In this loop, the brain is the...',
+    o: ['Control center', 'Effector', 'Receptor', 'Stimulus'], a: 'Control center', why: 'The brain compares to the set point and sends instructions, so it is the <b>control center</b>.' },
+  { t: 'pick', w: ['Hormone'], tag: 'Name the word', p: 'Which word means: <span class="def">' + D['Hormone'] + '</span>?',
+    o: ['Hormone', 'Receptor', 'Stimulus', 'Effector'], a: 'Hormone', why: why('Hormone') },
+  { t: 'fill', w: ['Stimulus'], tag: 'Finish the definition', p: 'Choose the words to finish the definition.',
+    parts: ['A stimulus is a ', { o: ['change', 'response', 'messenger'], a: 'change' }, ' inside or outside an organism that is ', { o: ['detected', 'carried out', 'kept steady'], a: 'detected' }, '.'],
+    why: why('Stimulus') },
+  { t: 'drag', w: ['Negative feedback', 'Positive feedback'], tag: 'Sort the examples', p: 'Drag <b>negative</b> or <b>positive</b> into each blank.',
+    lines: [['Shivering warms a cold body back up: ', { a: 'negative' }, ' feedback.'], ['Platelets at a cut attract more and more platelets: ', { a: 'positive' }, ' feedback.'], ['Sweating cools an overheated body: ', { a: 'negative' }, ' feedback.'], ['Contractions push harder and harder until birth: ', { a: 'positive' }, ' feedback.']],
+    bank: ['negative', 'positive', 'negative', 'positive'],
+    why: 'Negative feedback pulls back toward the set point. Positive feedback pushes the change further and further.' },
+  { t: 'shoot', w: ['Response'], tag: 'Shoot the word', p: 'Shoot the word that means: <span class="def">' + D['Response'] + '</span>.',
+    targets: ['Response', 'Stimulus', 'Receptor', 'Effector'], a: 'Response', why: why('Response') },
+  { t: 'pick', kind: 'idea', w: ['Feedback loop'], tag: 'Pick the definition', p: 'Which is the definition of <b>feedback loop</b>?',
+    o: [cap(D['Feedback loop']) + '.', cap(D['Homeostasis']) + '.', cap(D['Regulation']) + '.', cap(D['Positive feedback']) + '.'], a: cap(D['Feedback loop']) + '.', why: why('Feedback loop') },
+  { t: 'pick', w: ['Receptor'], tag: 'Use the word', p: 'Sensors in your skin notice that the air turned cold. In this loop, the skin sensors are the...',
+    o: ['Receptor', 'Effector', 'Control center', 'Response'], a: 'Receptor', why: 'The skin sensors detect the change, so they are the <b>receptor</b>.' },
+  { t: 'pick', w: ['Stimulus'], tag: 'Use the word', p: 'Your body temperature drops. In this loop, the drop in temperature is the...',
+    o: ['Stimulus', 'Response', 'Set point', 'Hormone'], a: 'Stimulus', why: 'The drop is the change that gets detected, so it is the <b>stimulus</b>.' },
+  { t: 'fill', w: ['Effector'], tag: 'Finish the definition', p: 'Choose the words to finish the definition.',
+    parts: ['An effector is a ', { o: ['muscle', 'sensor', 'set point'], a: 'muscle' }, ', gland, or other structure that ', { o: ['carries out', 'detects', 'compares'], a: 'carries out' }, ' the response.'],
+    why: why('Effector') },
+  { t: 'shoot', w: ['Regulation'], tag: 'Shoot the word', p: 'Shoot the word that means: <span class="def">' + D['Regulation'] + '</span>.',
+    targets: ['Regulation', 'Homeostasis', 'Response', 'Set point'], a: 'Regulation', why: why('Regulation') },
+  { t: 'pick', w: ['Internal environment'], tag: 'Name the word', p: 'Which words mean: <span class="def">' + D['Internal environment'] + '</span>?',
+    o: ['Internal environment', 'Set point', 'Homeostasis', 'Stimulus'], a: 'Internal environment', why: why('Internal environment') },
+  { t: 'drag', w: ['Receptor', 'Control center', 'Effector'], tag: 'Match the jobs', p: 'Drag the job each part does.',
+    lines: [['The receptor ', { a: 'detects' }, ' a change.'], ['The control center ', { a: 'compares' }, ' it to the set point and sends instructions.'], ['The effector ', { a: 'carries out' }, ' the response.']],
+    bank: ['detects', 'compares', 'carries out', 'increases', 'reverses'],
+    why: 'Receptor detects. Control center compares and sends instructions. Effector carries out the response.' },
+  { t: 'shoot', w: ['Positive feedback'], tag: 'Shoot the word', p: 'Shoot the word that means: <span class="def">' + D['Positive feedback'] + '</span>.',
+    targets: ['Positive feedback', 'Negative feedback', 'Homeostasis', 'Feedback loop'], a: 'Positive feedback', why: why('Positive feedback') },
+  { t: 'pick', kind: 'idea', w: ['Homeostasis'], tag: 'Pick the definition', p: 'Which is the definition of <b>homeostasis</b>?',
+    o: [cap(D['Homeostasis']) + '.', cap(D['Regulation']) + '.', cap(D['Set point']) + '.', cap(D['Internal environment']) + '.'], a: cap(D['Homeostasis']) + '.', why: why('Homeostasis') },
+  { t: 'shoot', w: ['Negative feedback'], tag: 'Shoot the word', p: 'Shoot the word that means: <span class="def">' + D['Negative feedback'] + '</span>.',
+    targets: ['Negative feedback', 'Positive feedback', 'Regulation', 'Response'], a: 'Negative feedback', why: why('Negative feedback') },
+  { t: 'pick', w: ['Hormone'], tag: 'Use the word', p: 'After a meal, the pancreas releases insulin into the blood. Insulin travels to body cells and changes how they work. Insulin is a...',
+    o: ['Hormone', 'Receptor', 'Set point', 'Stimulus'], a: 'Hormone', why: 'Insulin is a chemical messenger carried in the blood, so it is a <b>hormone</b>.' }
+];
+
+function shuffle(a) { a = a.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+var KEY = 'feedback-words-v1', saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
+
+var cur = -1, first = 0, panel = $('#panel'), raf = 0, marks = {};
+
+/* ---------- word wall ---------- */
+var NEEDW = {}; WORDS.forEach(function (w) { NEEDW[w] = 0; }); Q.forEach(function (q) { q.w.forEach(function (w) { NEEDW[w]++; }); });
+function resetMarks() { marks = {}; WORDS.forEach(function (w) { marks[w] = []; }); }
+function drawWall() {
+  var now = cur < Q.length && cur >= 0 ? Q[cur].w : [];
+  $('#tiles').innerHTML = WORDS.map(function (w) {
+    var m = marks[w], g = m.filter(function (x) { return x === 'g'; }).length, pips = '';
+    for (var i = 0; i < NEEDW[w]; i++) pips += '<i class="' + (m[i] || '') + '"></i>';
+    var cls = 'tile' + (now.indexOf(w) >= 0 ? ' now' : '') + (g === NEEDW[w] ? ' mast' : '');
+    return '<div class="' + cls + '"><b>' + w + '</b><span class="pips">' + pips + '</span></div>';
+  }).join('');
+}
+
+/* ---------- question panel ---------- */
+function bar() {
+  var n = Math.min(cur + 1, Q.length);
+  $('#pfill').style.width = (Math.min(cur, Q.length) / Q.length * 100) + '%';
+  $('#pcount').textContent = cur < Q.length ? n + ' / ' + Q.length : 'Done';
+  $('#score').innerHTML = '<span class="lbl">First try: </span>' + first;
+  $('#gameBtn').hidden = !saved.game;
+}
+function frame(q, body, actions) {
+  panel.innerHTML = '<div class="qhead"><span class="qtag">Question ' + (cur + 1) + ' · ' + q.tag + '</span><p class="qp">' + q.p + '</p></div><div class="body">' + body + '</div><div class="foot"><p class="fb" id="fb"></p><span id="act">' + (actions || '') + '</span></div>';
+}
+function fb(h, c) { var e = $('#fb'); e.className = 'fb ' + (c || ''); e.innerHTML = h; }
+function miss(q, h) { q.miss = (q.miss || 0) + 1; fb('<b>Not yet.</b> ' + h, 'bad'); }
+function done(q) {
+  q.done = true; if (!q.miss) first++;
+  q.w.forEach(function (w) { marks[w].push(q.miss ? 'r' : 'g'); });
+  cancelAnimationFrame(raf);
+  fb('<b>' + (q.miss ? 'Got it.' : 'Correct!') + '</b> ' + q.why, 'good');
+  $('#act').innerHTML = '<button type="button" class="btn pri pulse" id="next">' + (cur + 1 < Q.length ? 'Next →' : 'Finish →') + '</button>';
+  $('#next').addEventListener('click', next); $('#next').focus({ preventScroll: true }); bar(); drawWall();
+}
+function next() {
+  cancelAnimationFrame(raf);
+  panel.classList.add('out');
+  setTimeout(function () {
+    cur++; panel.classList.remove('out'); panel.classList.add('in');
+    render(); bar(); drawWall();
+    void panel.offsetWidth; panel.classList.remove('in');
+  }, 430);
+}
+(function () {
+  var sx = null;
+  panel.addEventListener('pointerdown', function (e) { sx = (cur < Q.length && Q[cur].done) ? e.clientX : null; });
+  panel.addEventListener('pointerup', function (e) { if (sx != null && e.clientX - sx < -70) next(); sx = null; });
+})();
+
+function render() {
+  if (cur >= Q.length) return endCard();
+  var q = Q[cur]; q.miss = 0; q.done = false;
+  $('#app').classList.toggle('tall', q.t === 'drag' || q.kind === 'idea');
+  ({ pick: rPick, shoot: rShoot, fill: rFill, drag: rDrag })[q.t](q);
+}
+
+function rPick(q) {
+  var o = shuffle(q.o);
+  frame(q, '<div class="opts ' + (q.kind || '') + '">' + o.map(function (t) { return '<button type="button" class="opt">' + esc(t) + '</button>'; }).join('') + '</div>');
+  Array.prototype.forEach.call(panel.querySelectorAll('.opt'), function (b) {
+    b.addEventListener('click', function () {
+      if (q.done) return;
+      if (b.textContent === q.a) { b.classList.add('good'); Array.prototype.forEach.call(panel.querySelectorAll('.opt'), function (x) { x.disabled = true; }); done(q); }
+      else {
+        b.classList.add('bad'); b.disabled = true;
+        var w = WORDS.filter(function (k) { return k === b.textContent || cap(D[k]) + '.' === b.textContent; })[0];
+        miss(q, w ? 'That one is <b>' + w + '</b>: ' + D[w] + '. Try again.' : 'Try again.');
+      }
+    });
+  });
+}
+
+function rShoot(q) {
+  frame(q, '<div class="range" id="range"></div>');
+  var rg = $('#range'), H = rg.clientHeight, W = rg.clientWidth, ts = shuffle(q.targets), rows = ts.length, slow = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.45 : 1;
+  var items = ts.map(function (t, i) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'tgt'; b.textContent = t; rg.appendChild(b);
+    var w = b.offsetWidth, h = b.offsetHeight, dir = i % 2 ? -1 : 1;
+    return { el: b, t: t, w: w, y: Math.max(2, (H / rows) * i + (H / rows - h) / 2), x: Math.random() * Math.max(10, W - w), v: dir * (50 + Math.random() * 40 + 10 * i) * slow };
+  });
+  var last = performance.now();
+  function tick(now) {
+    var dt = Math.min(0.05, (now - last) / 1000); last = now;
+    items.forEach(function (it) {
+      if (!it.hit) { it.x += it.v * dt; if (it.x > W) it.x = -it.w; if (it.x < -it.w) it.x = W; }
+      it.el.style.transform = 'translate(' + it.x.toFixed(1) + 'px,' + it.y.toFixed(1) + 'px)';
+    });
+    raf = requestAnimationFrame(tick);
+  }
+  raf = requestAnimationFrame(tick);
+  items.forEach(function (it) {
+    it.el.addEventListener('pointerdown', function (e) {
+      if (q.done || it.miss) return; e.preventDefault();
+      var r = rg.getBoundingClientRect(), bm = document.createElement('span'); bm.className = 'boom'; bm.style.left = (e.clientX - r.left) + 'px'; bm.style.top = (e.clientY - r.top) + 'px'; rg.appendChild(bm); setTimeout(function () { bm.remove(); }, 500);
+      if (it.t === q.a) { it.hit = true; it.el.classList.add('hit'); done(q); }
+      else { it.miss = true; it.el.classList.add('miss'); miss(q, '<b>' + esc(it.t) + '</b> means ' + D[it.t] + '. Keep aiming.'); }
+    });
+    it.el.addEventListener('click', function (e) { if (e.detail === 0) it.el.dispatchEvent(new PointerEvent('pointerdown', { clientX: it.el.getBoundingClientRect().left + 10, clientY: it.el.getBoundingClientRect().top + 10 })); });
+  });
+}
+
+function rFill(q) {
+  var blanks = q.parts.filter(function (p) { return typeof p === 'object'; });
+  q.v = blanks.map(function () { return null; }); q.ok = blanks.map(function () { return false; }); q.act = 0; q.bad = {};
+  frame(q, '<p class="sent" id="sent"></p><div class="choices" id="choices"></div>', '<button type="button" class="btn pri" id="chk" disabled>Check</button>');
+  $('#chk').addEventListener('click', function () {
+    var wrong = 0; q.bad = {};
+    blanks.forEach(function (b, i) { if (q.ok[i]) return; if (q.v[i] === b.a) q.ok[i] = true; else { q.bad[i] = 1; q.v[i] = null; wrong++; } });
+    if (wrong) { miss(q, wrong === 1 ? 'The blank in red is wrong. Choose again.' : 'The blanks in red are wrong. Choose again.'); q.act = q.ok.indexOf(false); }
+    paint(); if (!wrong) { $('#chk').disabled = true; done(q); }
+  });
+  function shuffleOnce(b) { return b._o || (b._o = shuffle(b.o)); }
+  function paint() {
+    var bi = 0;
+    $('#sent').innerHTML = q.parts.map(function (p) {
+      if (typeof p === 'string') return esc(p);
+      var i = bi++, c = q.ok[i] ? 'ok' : (q.v[i] ? 'full' : '') + (i === q.act && !q.ok[i] && !q.done ? ' act' : '') + (q.bad[i] ? ' shake' : '');
+      return '<span class="slot ' + c + '" data-b="' + i + '" tabindex="0" role="button" aria-label="Blank ' + (i + 1) + (q.v[i] ? ': ' + q.v[i] : '') + '">' + (q.v[i] ? esc(q.v[i]) : '?') + '</span>';
+    }).join('');
+    var b = blanks[q.act];
+    $('#choices').innerHTML = (q.done || !b || q.ok[q.act]) ? '' : shuffleOnce(b).map(function (o) { return '<button type="button" class="chip">' + esc(o) + '</button>'; }).join('');
+    Array.prototype.forEach.call($('#choices').children, function (c) { c.addEventListener('click', function () { q.v[q.act] = c.textContent; q.bad = {}; var nx = q.v.indexOf(null); q.act = nx >= 0 ? nx : q.act; paint(); }); });
+    Array.prototype.forEach.call($('#sent').querySelectorAll('.slot'), function (s) { function go() { var i = +s.dataset.b; if (q.ok[i] || q.done) return; q.act = i; paint(); } s.addEventListener('click', go); s.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }); });
+    if ($('#chk')) $('#chk').disabled = q.done || q.v.some(function (v, i) { return !v && !q.ok[i]; });
+  }
+  paint();
+}
+
+function rDrag(q) {
+  var slots = []; q.lines.forEach(function (l) { l.forEach(function (p) { if (typeof p === 'object') slots.push(p); }); });
+  q.fill = slots.map(function () { return null; }); q.ok = slots.map(function () { return false; }); q.sel = null; q.bad = {};
+  var bank = shuffle(q.bank).map(function (w, i) { return { id: i, w: w }; });
+  frame(q, '<div class="lines" id="lines"></div><div class="bank" id="bank"></div>', '<button type="button" class="btn pri" id="chk" disabled>Check</button>');
+  function used(id) { return q.fill.indexOf(id) >= 0; }
+  function place(si, id) { if (q.ok[si]) return; var was = q.fill.indexOf(id); if (was >= 0) q.fill[was] = null; q.fill[si] = id; q.sel = null; q.bad = {}; paint(); }
+  function paint() {
+    var k = 0;
+    $('#lines').innerHTML = q.lines.map(function (l, li) {
+      return '<p class="sent"><span class="n">' + (li + 1) + '</span>' + l.map(function (p) {
+        if (typeof p === 'string') return esc(p);
+        var i = k++, w = q.fill[i] != null ? bank[q.fill[i]].w : '', c = q.ok[i] ? 'ok' : (w ? 'full' : '') + (q.bad[i] ? ' shake' : '');
+        return '<span class="slot ' + c + '" data-s="' + i + '" tabindex="0" role="button" aria-label="Slot ' + (i + 1) + (w ? ': ' + w : ', empty') + '">' + (w ? esc(w) : '&nbsp;') + '</span>';
+      }).join('') + '</p>';
+    }).join('');
+    $('#bank').innerHTML = q.done ? '' : bank.filter(function (b) { return !used(b.id); }).map(function (b) { return '<button type="button" class="chip' + (q.sel === b.id ? ' sel' : '') + '" data-id="' + b.id + '">' + esc(b.w) + '</button>'; }).join('');
+    Array.prototype.forEach.call($('#lines').querySelectorAll('.slot'), function (s) {
+      function go() { var i = +s.dataset.s; if (q.ok[i] || q.done) return; if (q.sel != null) place(i, q.sel); else if (q.fill[i] != null) { q.fill[i] = null; paint(); } }
+      s.addEventListener('click', go); s.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
+    Array.prototype.forEach.call($('#bank').children, function (c) { wireChip(c); });
+    $('#chk').disabled = q.done || q.fill.some(function (v, i) { return v == null && !q.ok[i]; });
+  }
+  function wireChip(c) {
+    var id = +c.dataset.id, st = null, ghost = null, over = null;
+    c.addEventListener('pointerdown', function (e) { st = { x: e.clientX, y: e.clientY }; c.setPointerCapture(e.pointerId); });
+    c.addEventListener('pointermove', function (e) {
+      if (!st) return;
+      if (!ghost && Math.hypot(e.clientX - st.x, e.clientY - st.y) > 6) { ghost = c.cloneNode(true); ghost.classList.add('ghost', 'sel'); document.body.appendChild(ghost); c.style.opacity = '.35'; }
+      if (ghost) {
+        ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
+        var el = document.elementFromPoint(e.clientX, e.clientY), s = el && el.closest ? el.closest('.slot') : null;
+        if (over && over !== s) over.classList.remove('over'); if (s && !s.classList.contains('ok')) { s.classList.add('over'); over = s; } else over = null;
+      }
+    });
+    function end(e) {
+      if (!st) return; var wasDrag = !!ghost; st = null;
+      if (ghost) { ghost.remove(); ghost = null; c.style.opacity = ''; }
+      if (over) { over.classList.remove('over'); var si = +over.dataset.s; over = null; return place(si, id); }
+      if (!wasDrag && e.type === 'pointerup') { q.sel = q.sel === id ? null : id; paint(); }
+    }
+    c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
+    c.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); q.sel = q.sel === id ? null : id; paint(); } });
+  }
+  $('#chk').addEventListener('click', function () {
+    var wrong = 0; q.bad = {};
+    slots.forEach(function (s, i) { if (q.ok[i]) return; if (bank[q.fill[i]].w === s.a) q.ok[i] = true; else { q.bad[i] = 1; q.fill[i] = null; wrong++; } });
+    if (wrong) miss(q, wrong + (wrong === 1 ? ' slot was wrong (red). Its word went back to the bank.' : ' slots were wrong (red). Their words went back to the bank.'));
+    paint(); if (!wrong) { $('#chk').disabled = true; done(q); }
+  });
+  paint();
+}
+
+var NEED = Math.ceil(Q.length * 0.9);
+function endCard() {
+  $('#app').classList.remove('tall');
+  var pct = Math.round(first / Q.length * 100), win = first >= NEED;
+  var weak = WORDS.filter(function (w) { return marks[w].indexOf('r') >= 0; });
+  if (win) { saved.game = true; saved.score = { n: first, t: Q.length }; save(); }
+  bar(); drawWall();
+  panel.innerHTML = '<div class="endc" style="grid-row:1 / -1"><h2>' + (win ? 'Hold the Line unlocked!' : 'Not unlocked yet') + '</h2><p class="big">First try correct: <b>' + first + ' / ' + Q.length + '</b> (' + pct + '%)</p>' +
+    (weak.length ? '<p>Study these words (red on the word wall): <b>' + weak.join(', ') + '</b></p>' : '') + '<p>' +
+    (win ? 'You scored 90% or higher. Hold the Line is starting…' : 'Hold the Line unlocks when you score 90% or higher: at least ' + NEED + ' of ' + Q.length + ' right on the first try. Start over and answer all ' + Q.length + ' questions again.') +
+    '</p><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">' + (win ? '' : '<button type="button" class="btn pri pulse" id="again" style="padding:10px 22px;font-size:18px">Start over</button>') + '</div></div>';
+  if (win) setTimeout(openGame, 1600);
+  else $('#again').addEventListener('click', restartReview);
+}
+function restartReview() { first = 0; cur = -1; resetMarks(); next(); }
+$('#gameBtn').addEventListener('click', openGame);
+
+/* ================= HOLD THE LINE =================
+   The player is the control center. A temperature line scrolls by; sun and snow push it off the set point,
+   and "runaway" spells add positive feedback that pushes it further the further it already is. */
+var cv = $('#hc'), cx = cv.getContext('2d'), G = null, gRaf = 0, GW = 0, GH = 0, DPR = 1, ROUND = 45, BAND = .5;
+function sizeG() { DPR = Math.min(2, window.devicePixelRatio || 1); GW = innerWidth; GH = innerHeight; cv.width = GW * DPR; cv.height = GH * DPR; }
+function openGame() {
+  $('#hl').hidden = false; $('#gj').hidden = true; $('#hhelp').hidden = false; sizeG(); resetArm(false);
+  G = { v: 0, r: 0, t: 0, inB: 0, keys: { u: 0, d: 0 }, d: 0, dT: 2.5, dK: null, run: 0, runNext: 12 + Math.random() * 5, trace: [], parts: [], st: 'play', flash: 0 };
+  cancelAnimationFrame(gRaf); var last = performance.now();
+  (function loop(now) { var dt = Math.min(0.04, (now - last) / 1000); last = now; gStep(dt); gDraw(); gRaf = requestAnimationFrame(loop); })(last);
+}
+function closeGame() { cancelAnimationFrame(gRaf); $('#hl').hidden = true; G = null; }
+function gStep(dt) {
+  if (G.st !== 'play') return;
+  G.t += dt;
+  var input = G.keys.u - G.keys.d;
+  if (input) $('#hhelp').hidden = true;
+  G.dT -= dt;
+  if (G.dT <= 0) { var kind = Math.random() < .5 ? 'sun' : 'snow'; G.dK = kind; G.d = (kind === 'sun' ? 1 : -1) * (.7 + Math.random() * .9 + G.t / 60); G.dLen = 1.6 + Math.random() * 1.8; G.dT = G.dLen + 1.2 + Math.random() * 2; }
+  if (G.dLen > 0) { G.dLen -= dt; if (G.dLen <= 0) { G.d = 0; G.dK = null; } }
+  if (G.t > G.runNext && !G.run) { G.run = 4; G.runNext = G.t + 9 + Math.random() * 6; if (Math.abs(G.v) < .3) G.v += (Math.random() < .5 ? -1 : 1) * .35; }
+  var runaway = 0; if (G.run) { G.run = Math.max(0, G.run - dt); runaway = 1.3 * G.v; }
+  var a = input * 2.2 + G.d + runaway - 1.1 * G.r;
+  G.r += a * dt; G.v += G.r * dt;
+  if (G.v > 4) { G.v = 4; G.r = Math.min(G.r, 0); } if (G.v < -4) { G.v = -4; G.r = Math.max(G.r, 0); }
+  if (Math.abs(G.v) <= BAND) G.inB += dt;
+  G.flash = Math.abs(G.v) > 3 ? G.flash + dt : 0;
+  G.trace.push([G.t, G.v]); while (G.trace.length && G.trace[0][0] < G.t - 8) G.trace.shift();
+  if (G.dK && Math.random() < dt * 14) G.parts.push({ k: G.dK, x: Math.random() * GW, y: -10, vy: 80 + Math.random() * 120, l: 4 });
+  G.parts.forEach(function (p) { p.y += p.vy * dt; p.l -= dt; }); G.parts = G.parts.filter(function (p) { return p.l > 0 && p.y < GH + 20; });
+  var left = Math.max(0, ROUND - G.t), pct = Math.round(G.inB / Math.max(.01, G.t) * 100);
+  $('#htime').textContent = '0:' + String(Math.ceil(left)).padStart(2, '0');
+  $('#hzone').textContent = 'On the line: ' + pct + '%';
+  if (G.t >= ROUND) {
+    G.st = 'end'; var stars = pct >= 80 ? 3 : pct >= 60 ? 2 : pct >= 40 ? 1 : 0;
+    $('#gjs').textContent = 'You held the line ' + pct + '% of the time. ' + (stars ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : 'Try again and react sooner.');
+    $('#gj').hidden = false; $('#gjAgain').focus({ preventScroll: true });
+  }
+}
+function gDraw() {
+  var c = cx; c.setTransform(DPR, 0, 0, DPR, 0, 0);
+  var v = G.v, hot = Math.max(0, Math.min(1, v / 3)), cold = Math.max(0, Math.min(1, -v / 3));
+  var bgc = [16 + hot * 70 - cold * 4, 24 + hot * 10 + cold * 18, 15 + cold * 70];
+  c.fillStyle = 'rgb(' + bgc.map(Math.round).join(',') + ')'; c.fillRect(0, 0, GW, GH);
+  G.parts.forEach(function (p) { if (p.k === 'snow') { c.fillStyle = 'rgba(235,245,255,.85)'; c.beginPath(); c.arc(p.x, p.y, 3, 0, 7); c.fill(); } else { c.fillStyle = 'rgba(255,183,3,.75)'; c.fillRect(p.x, p.y, 2, 12); } });
+  if (G.dK === 'sun') { c.fillStyle = '#FFB703'; c.beginPath(); c.arc(GW - 90, 110, 34, 0, 7); c.fill(); }
+  if (G.dK === 'snow') { c.strokeStyle = '#EAF4FF'; c.lineWidth = 4; for (var i = 0; i < 3; i++) { var a = i * Math.PI / 3; c.beginPath(); c.moveTo(GW - 90 + Math.cos(a) * 30, 110 + Math.sin(a) * 30); c.lineTo(GW - 90 - Math.cos(a) * 30, 110 - Math.sin(a) * 30); c.stroke(); } }
+  var mid = GH * .5, sc = GH * .1, xNow = GW * .72, pxs = (xNow - 40) / 8;
+  c.fillStyle = 'rgba(57,217,138,.18)'; c.fillRect(0, mid - BAND * sc, GW, BAND * 2 * sc);
+  c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = 2; c.setLineDash([10, 8]); c.beginPath(); c.moveTo(0, mid); c.lineTo(GW, mid); c.stroke(); c.setLineDash([]);
+  if (G.run) { c.strokeStyle = 'rgba(255,60,60,' + (.5 + .4 * Math.sin(G.t * 12)) + ')'; c.lineWidth = 14; c.strokeRect(7, 7, GW - 14, GH - 14);
+    c.fillStyle = '#fff'; c.font = '700 ' + (GW < 640 ? 18 : 22) + 'px ' + getComputedStyle(document.body).fontFamily; c.textAlign = 'center';
+    if (GW < 640) { c.fillText('RUNAWAY! Positive feedback!', GW / 2, GH * .25); c.fillText('Push back!', GW / 2, GH * .25 + 24); } else c.fillText('RUNAWAY! Positive feedback is pushing it away. Push back!', GW / 2, GH * .2); }
+  c.strokeStyle = '#FFD6A0'; c.lineWidth = 4; c.lineJoin = 'round'; c.beginPath();
+  G.trace.forEach(function (p, i) { var x = xNow - (G.t - p[0]) * pxs, y = mid - p[1] * sc; i ? c.lineTo(x, y) : c.moveTo(x, y); }); c.stroke();
+  var on = Math.abs(v) <= BAND; c.fillStyle = on ? '#39D98A' : '#FF5A5A'; c.beginPath(); c.arc(xNow, mid - v * sc, 13, 0, 7); c.fill();
+  c.strokeStyle = '#fff'; c.lineWidth = 3; c.stroke();
+  if (G.flash > 0) { c.fillStyle = 'rgba(255,40,40,' + (.12 + .1 * Math.sin(G.t * 10)) + ')'; c.fillRect(0, 0, GW, GH); }
+}
+function hold(btn, k) {
+  function on(e) { e.preventDefault(); if (G) G.keys[k] = 1; btn.classList.add('on'); try { btn.setPointerCapture(e.pointerId); } catch (x) {} }
+  function off() { if (G) G.keys[k] = 0; btn.classList.remove('on'); }
+  btn.addEventListener('pointerdown', on); btn.addEventListener('pointerup', off); btn.addEventListener('pointercancel', off); btn.addEventListener('lostpointercapture', off);
+}
+hold($('#heat'), 'u'); hold($('#cool'), 'd');
+document.addEventListener('keydown', function (e) {
+  if (!G) return;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { G.keys.u = 1; $('#heat').classList.add('on'); e.preventDefault(); }
+  if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { G.keys.d = 1; $('#cool').classList.add('on'); e.preventDefault(); }
+});
+document.addEventListener('keyup', function (e) {
+  if (!G) return;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { G.keys.u = 0; $('#heat').classList.remove('on'); }
+  if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { G.keys.d = 0; $('#cool').classList.remove('on'); }
+});
+var armT = 0;
+function resetArm(on) { var b = $('#hreset'); b.classList.toggle('armed', on); b.textContent = on ? 'Tap again to reset' : 'Reset'; clearTimeout(armT); if (on) armT = setTimeout(function () { resetArm(false); }, 3000); }
+function fullReset() { closeGame(); saved.game = false; saved.score = null; save(); restartReview(); bar(); }
+$('#hreset').addEventListener('click', function () { if ($('#hreset').classList.contains('armed')) fullReset(); else resetArm(true); });
+$('#gjBack').addEventListener('click', fullReset);
+$('#gjAgain').addEventListener('click', openGame);
+window.addEventListener('resize', function () { if (G) sizeG(); });
+
+window.__fw = { Q: Q, get cur() { return cur; }, _end: function (n) { first = n; cur = Q.length; endCard(); }, openGame: openGame, get G() { return G; } };
+
+resetMarks(); cur = 0; drawWall(); render(); bar();
+})();
+</script>
+</body>
+</html>
