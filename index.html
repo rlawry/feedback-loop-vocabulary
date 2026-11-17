@@ -111,6 +111,16 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--hot); 
 .endc p { margin: 0; }
 .endc .big { font-size: clamp(16px, 5vw, 22px); }
 
+/* "are you sure?" box for anything that erases progress */
+#cf { position: fixed; inset: 0; z-index: 60; background: rgba(16, 24, 15, .6); display: grid; place-items: center; padding: 16px; }
+#cf .box { background: var(--surface); border: 3px solid var(--ink); max-width: 440px; width: 100%; padding: 18px 18px 16px; display: grid; gap: 12px; }
+#cf h2 { margin: 0; font-size: 21px; }
+#cf p { margin: 0; font-size: 16px; }
+#cf .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+#cf .keep { font-size: 17px; padding: 10px 18px; }
+#cf .erase { background: var(--bad); border-color: var(--bad); color: #fff; }
+#cf .erase:disabled { opacity: .5; }
+
 /* reward game: Hold the Line */
 #hl { position: fixed; inset: 0; z-index: 30; background: #10180F; }
 #hc { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
@@ -145,13 +155,14 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--hot); 
   <section id="deck"><div class="panel" id="panel" aria-live="polite"></div></section>
 </div>
 
+<div id="cf" hidden role="dialog" aria-modal="true" aria-labelledby="cfh"><div class="box"><h2 id="cfh"></h2><p id="cft"></p><div class="row"><button type="button" class="btn erase" id="cfYes"></button><button type="button" class="btn pri keep" id="cfNo">Keep my progress</button></div></div></div>
 <div id="hl" hidden>
   <canvas id="hc" aria-label="Hold the Line: keep body temperature on the set point"></canvas>
   <div class="hhud"><span id="htime">0:45</span><span id="hzone">On the line: 0%</span></div>
   <div class="hbtns"><button type="button" class="hb" id="heat" aria-label="Heat">▲ HEAT</button><button type="button" class="hb" id="cool" aria-label="Cool">▼ COOL</button></div>
   <button type="button" class="btn" id="hreset">Reset</button>
   <p class="hhelp" id="hhelp">You are the control center. Hold HEAT or COOL (or the ▲ ▼ keys) to keep the temperature line on the dashed set point. Watch out for runaway positive feedback!</p>
-  <div id="gj" hidden><p class="w">good job.</p><p class="s" id="gjs"></p><div><button type="button" class="btn pri" id="gjAgain">Play again</button><button type="button" class="btn" id="gjBack">Start the review over</button></div></div>
+  <div id="gj" hidden><p class="w">good job.</p><p class="s" id="gjs"></p><div><button type="button" class="btn pri" id="gjAgain">Play again</button><button type="button" class="btn" id="gjBack">Leave the game</button></div></div>
 </div>
 
 <script>
@@ -259,7 +270,22 @@ var KEY = 'feedback-words-v1', saved = {};
 try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
 function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
 
-var cur = -1, first = 0, panel = $('#panel'), raf = 0, marks = {};
+var cur = -1, first = 0, panel = $('#panel'), raf = 0, marks = {}, resumeMiss = 0;
+var cfT = 0;
+function confirmBox(title, text, yes, onYes) {
+  $('#cfh').textContent = title; $('#cft').textContent = text;
+  var y = $('#cfYes'), n = 2; y.disabled = true; y.textContent = yes + ' (' + n + ')';
+  clearInterval(cfT); cfT = setInterval(function () { n--; if (n > 0) y.textContent = yes + ' (' + n + ')'; else { clearInterval(cfT); y.textContent = yes; y.disabled = false; } }, 1000);
+  y.onclick = function () { if (y.disabled) return; closeCf(); onYes(); };
+  $('#cf').hidden = false; $('#cfNo').focus({ preventScroll: true });
+}
+function closeCf() { clearInterval(cfT); $('#cf').hidden = true; if (G) G.paused = false; }
+$('#cfNo').addEventListener('click', closeCf);
+$('#cf').addEventListener('click', function (e) { if (e.target.id === 'cf') closeCf(); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('#cf').hidden) closeCf(); }, true);
+
+/* progress is saved after every answer, so a reload or a closed tab picks up where the student left off */
+function saveProg(isDone) { saved.prog = { cur: cur, first: first, marks: marks, done: !!isDone, miss: cur < Q.length && cur >= 0 ? (Q[cur].miss || 0) : 0 }; save(); }
 
 /* ---------- word wall ---------- */
 var NEEDW = {}; WORDS.forEach(function (w) { NEEDW[w] = 0; }); Q.forEach(function (q) { q.w.forEach(function (w) { NEEDW[w]++; }); });
@@ -286,10 +312,11 @@ function frame(q, body, actions) {
   panel.innerHTML = '<div class="qhead"><span class="qtag">Question ' + (cur + 1) + ' · ' + q.tag + '</span><p class="qp">' + q.p + '</p></div><div class="body">' + body + '</div><div class="foot"><p class="fb" id="fb"></p><span id="act">' + (actions || '') + '</span></div>';
 }
 function fb(h, c) { var e = $('#fb'); e.className = 'fb ' + (c || ''); e.innerHTML = h; }
-function miss(q, h) { q.miss = (q.miss || 0) + 1; fb('<b>Not yet.</b> ' + h, 'bad'); }
+function miss(q, h) { q.miss = (q.miss || 0) + 1; fb('<b>Not yet.</b> ' + h, 'bad'); saveProg(false); }
 function done(q) {
   q.done = true; if (!q.miss) first++;
   q.w.forEach(function (w) { marks[w].push(q.miss ? 'r' : 'g'); });
+  saveProg(true);
   cancelAnimationFrame(raf);
   fb('<b>' + (q.miss ? 'Got it.' : 'Correct!') + '</b> ' + q.why, 'good');
   $('#act').innerHTML = '<button type="button" class="btn pri pulse" id="next">' + (cur + 1 < Q.length ? 'Next →' : 'Finish →') + '</button>';
@@ -299,7 +326,7 @@ function next() {
   cancelAnimationFrame(raf);
   panel.classList.add('out');
   setTimeout(function () {
-    cur++; panel.classList.remove('out'); panel.classList.add('in');
+    cur++; saveProg(false); panel.classList.remove('out'); panel.classList.add('in');
     render(); bar(); drawWall();
     void panel.offsetWidth; panel.classList.remove('in');
   }, 430);
@@ -312,7 +339,7 @@ function next() {
 
 function render() {
   if (cur >= Q.length) return endCard();
-  var q = Q[cur]; q.miss = 0; q.done = false;
+  var q = Q[cur]; q.miss = resumeMiss; resumeMiss = 0; q.done = false;
   $('#app').classList.toggle('tall', q.t === 'drag' || q.kind === 'idea');
   ({ pick: rPick, shoot: rShoot, fill: rFill, drag: rDrag })[q.t](q);
 }
@@ -444,7 +471,7 @@ function rDrag(q) {
 }
 
 var NEED = Math.ceil(Q.length * 0.9);
-function endCard() {
+function endCard(resumed) {
   $('#app').classList.remove('tall');
   var pct = Math.round(first / Q.length * 100), win = first >= NEED;
   var weak = WORDS.filter(function (w) { return marks[w].indexOf('r') >= 0; });
@@ -454,10 +481,12 @@ function endCard() {
     (weak.length ? '<p>Study these words (red on the word wall): <b>' + weak.join(', ') + '</b></p>' : '') + '<p>' +
     (win ? 'You scored 90% or higher. Hold the Line is starting…' : 'Hold the Line unlocks when you score 90% or higher: at least ' + NEED + ' of ' + Q.length + ' right on the first try. Start over and answer all ' + Q.length + ' questions again.') +
     '</p><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">' + (win ? '' : '<button type="button" class="btn pri pulse" id="again" style="padding:10px 22px;font-size:18px">Start over</button>') + '</div></div>';
-  if (win) setTimeout(openGame, 1600);
-  else $('#again').addEventListener('click', restartReview);
+  if (win && !resumed) setTimeout(openGame, 1600);
+  if (win && resumed) panel.querySelector('.endc p:last-of-type').textContent = 'You scored 90% or higher. Press Hold the Line at the top to play.';
+  if (!win) $('#again').addEventListener('click', function () {
+    confirmBox('Start over?', 'All ' + Q.length + ' questions start again and your word wall is cleared.', 'Yes, start over', restartReview); });
 }
-function restartReview() { first = 0; cur = -1; resetMarks(); next(); }
+function restartReview() { first = 0; cur = -1; resetMarks(); saved.prog = null; save(); next(); }
 $('#gameBtn').addEventListener('click', openGame);
 
 /* ================= HOLD THE LINE =================
@@ -473,7 +502,7 @@ function openGame() {
 }
 function closeGame() { cancelAnimationFrame(gRaf); $('#hl').hidden = true; G = null; }
 function gStep(dt) {
-  if (G.st !== 'play') return;
+  if (G.st !== 'play' || G.paused) return;
   G.t += dt;
   var input = G.keys.u - G.keys.d;
   if (input) $('#hhelp').hidden = true;
@@ -536,16 +565,27 @@ document.addEventListener('keyup', function (e) {
   if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { G.keys.d = 0; $('#cool').classList.remove('on'); }
 });
 var armT = 0;
-function resetArm(on) { var b = $('#hreset'); b.classList.toggle('armed', on); b.textContent = on ? 'Tap again to reset' : 'Reset'; clearTimeout(armT); if (on) armT = setTimeout(function () { resetArm(false); }, 3000); }
+function resetArm() {}
 function fullReset() { closeGame(); saved.game = false; saved.score = null; save(); restartReview(); bar(); }
-$('#hreset').addEventListener('click', function () { if ($('#hreset').classList.contains('armed')) fullReset(); else resetArm(true); });
-$('#gjBack').addEventListener('click', fullReset);
+$('#hreset').addEventListener('click', function () {
+  if (G) G.paused = true;
+  confirmBox('Erase everything?', 'This erases your progress, locks Hold the Line again, and starts all ' + Q.length + ' questions over.', 'Yes, erase it', fullReset);
+});
+$('#gjBack').addEventListener('click', function () { closeGame(); bar(); });
 $('#gjAgain').addEventListener('click', openGame);
 window.addEventListener('resize', function () { if (G) sizeG(); });
 
 window.__fw = { Q: Q, get cur() { return cur; }, _end: function (n) { first = n; cur = Q.length; endCard(); }, openGame: openGame, get G() { return G; } };
 
-resetMarks(); cur = 0; drawWall(); render(); bar();
+resetMarks(); cur = 0;
+(function resume() {
+  var p = saved.prog; if (!p) return;
+  cur = Math.max(0, Math.min(Q.length, p.cur | 0)); first = p.first | 0;
+  WORDS.forEach(function (w) { if (p.marks && Array.isArray(p.marks[w])) marks[w] = p.marks[w].slice(0, NEEDW[w]); });
+  if (p.done && cur < Q.length) cur++;
+  else resumeMiss = p.miss | 0;   /* a miss before reloading still counts, so reloading can't erase a wrong answer */
+})();
+drawWall(); if (cur >= Q.length) { endCard(true); } else render(); bar();
 })();
 </script>
 </body>
